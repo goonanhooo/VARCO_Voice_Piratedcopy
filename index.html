@@ -73,7 +73,7 @@
       width: max-content; 
     }
 
-    /* 6. 게임 트랙 */
+    /* 6. 게임 트랙 (JS로 이동하므로 CSS 애니메이션 제거됨) */
     #gameTrack {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       pointer-events: none; z-index: 3;
@@ -107,7 +107,7 @@
       color: #2ecc71; font-weight: bold; font-size: 0.9rem;
     }
 
-    /* 9. 애니메이션 */
+    /* 9. 애니메이션 (캐릭터) */
     .falling { animation: gravityBounce 1.0s linear forwards; opacity: 1 !important; }
     @keyframes gravityBounce {
       0% { transform: translateY(-150px); animation-timing-function: ease-in; opacity: 0; }
@@ -123,12 +123,6 @@
       40% { transform: translateY(-90px); } 
       100% { transform: translateY(0); } 
     }
-
-    @keyframes moveTrackDynamic {
-      0% { transform: translateX(0); }
-      100% { transform: translateX(var(--move-distance)); } 
-    }
-    .track-move { animation: moveTrackDynamic var(--move-duration) linear forwards; }
 
     /* 10. 레이아웃 & 버튼 */
     label { font-weight: normal; display: block; margin-top: 12px; }
@@ -190,7 +184,6 @@
     }
     .col-no { width: 40px; color: #888; }
     .col-init { width: 40%; color: #666; }
-    /* [수정] font-weight: bold 제거 -> normal */
     .col-final { font-weight: normal; color: #000; }
 
     /* 동그란 아이콘 버튼 스타일 (크기 18px로 축소) */
@@ -292,6 +285,9 @@
     let selectedVoice = "3b2daafa-1f83-580a-a846-d5fc7fd6f3e7"; 
     let lastAudioUrl = null;
     let isJumping = false;
+    // [선입력 기능] 점프 중에 점프 키를 눌렀는지 저장하는 플래그
+    let jumpRequested = false; 
+
     let gameLoopId = null; 
     let audioGenerationPromise = null;
     let isAudioTriggered = false;
@@ -302,6 +298,11 @@
 
     let currentTextLeft = 15; 
     const VOICES = ["3b2daafa-1f83-580a-a846-d5fc7fd6f3e7"];
+
+    // [최적화] JS 이동을 위한 변수 추가
+    let trackPosition = 0;
+    let lastTime = 0;
+    const GAME_SPEED = 350; // 초당 이동 픽셀 (속도)
 
     // --- 🔊 사운드 시스템 ---
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -352,24 +353,20 @@
         oscillator.stop(audioCtx.currentTime + 0.15);
     }
 
-    // --- 히스토리 추가 함수 ---
     function addHistoryLog(finalText, audioUrl) {
         historyCount++;
         historyContainer.style.display = 'block'; 
 
         const tr = document.createElement('tr');
         
-        // 1. 번호
         const tdNo = document.createElement('td');
         tdNo.className = 'col-no';
         tdNo.textContent = historyCount;
 
-        // 2. 초기 텍스트
         const tdInit = document.createElement('td');
         tdInit.className = 'col-init';
         tdInit.textContent = initialTextValue;
 
-        // 3. 최종 텍스트 + 버튼들
         const tdFinal = document.createElement('td');
         tdFinal.className = 'col-final';
 
@@ -378,21 +375,15 @@
             spanText.textContent = finalText;
             tdFinal.appendChild(spanText);
 
-            // 재생 버튼
             const playBtn = document.createElement('button');
             playBtn.className = 'icon-btn btn-play';
             playBtn.textContent = '▶';
-            playBtn.title = "듣기";
-            playBtn.onclick = () => {
-                new Audio(audioUrl).play();
-            };
+            playBtn.onclick = () => { new Audio(audioUrl).play(); };
             tdFinal.appendChild(playBtn);
 
-            // 다운로드 버튼
             const downBtn = document.createElement('button');
             downBtn.className = 'icon-btn btn-down';
             downBtn.textContent = '⬇';
-            downBtn.title = "다운로드";
             downBtn.onclick = () => {
                 const a = document.createElement('a');
                 a.href = audioUrl;
@@ -402,7 +393,6 @@
                 a.remove();
             };
             tdFinal.appendChild(downBtn);
-
         } else {
             const spanFail = document.createElement('span');
             spanFail.style.color = 'red';
@@ -414,20 +404,20 @@
         tr.appendChild(tdNo);
         tr.appendChild(tdInit);
         tr.appendChild(tdFinal);
-        
         historyBody.prepend(tr);
     }
 
-    // --- 🏁 레벨 생성 ---
     function initLevel() {
         gameTrack.innerHTML = ''; 
+        gameTrack.style.transform = 'translateX(0px)'; // [최적화] 초기 위치
+        trackPosition = 0; // [최적화] JS 변수 초기화
+
         spikes = [];
         attachments = [];
         cloneItems = []; 
         passedObstacles.clear(); 
-        lostStringPool = "";     
+        lostStringPool = "";      
 
-        // 장애물 개수와 간격 고정
         const obstacleCount = 8;    
         
         let currentX = 600; 
@@ -450,29 +440,26 @@
             gameTrack.appendChild(attachDiv);
         }
 
-        const triggerPos = currentX + 200;
+        // --- [위치 수정] 생성선과 결승선 위치 조정 ---
+        // 생성선: 마지막 장애물(currentX)에서 50px 뒤 (바짝 붙임)
+        const triggerPos = currentX + 50;
         const tLine = document.createElement('div');
         tLine.id = 'triggerLine';
         tLine.style.left = `${triggerPos}px`;
         gameTrack.appendChild(tLine);
 
-        const finishPos = triggerPos + 500;
+        // 결승선: 생성선 기준 800px 뒤 (조금 더 멀리)
+        const finishPos = triggerPos + 1000;
         const fLine = document.createElement('div');
         fLine.id = 'finishLine';
         fLine.style.left = `${finishPos}px`;
         gameTrack.appendChild(fLine);
+        // ------------------------------------------
 
         spikes = document.querySelectorAll('.spike');
         attachments = document.querySelectorAll('.spike-attachment');
         triggerLine = document.getElementById('triggerLine');
         finishLine = document.getElementById('finishLine');
-
-        const totalDistance = -(finishPos + 500); 
-        const speed = 350; 
-        const duration = Math.abs(totalDistance) / speed;
-
-        gameTrack.style.setProperty('--move-distance', `${totalDistance}px`);
-        gameTrack.style.setProperty('--move-duration', `${duration}s`);
     }
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -480,14 +467,32 @@
       voiceStatus.textContent = `랜덤 선택된 화자: ${selectedVoice}`;
     });
 
+    // --- [수정된 점프 로직] 선입력(Buffering) 적용 ---
     function jump() {
-      if (isJumping) return;
+      // 이미 점프 중이라면? -> 선입력(Buffer)에 저장해두고 리턴
+      if (isJumping) {
+        jumpRequested = true; 
+        return;
+      }
+
       playJumpSound();
       isJumping = true;
+      jumpRequested = false; // 점프 시작 시 선입력 초기화
+
+      // 클래스 초기화 후 다시 부여 (애니메이션 재시작)
+      ghostText.classList.remove('jumping');
+      void ghostText.offsetWidth; // Reflow 강제
       ghostText.classList.add('jumping');
+
+      // 점프 체공 시간 (CSS 0.7s와 동일)
       setTimeout(() => {
         ghostText.classList.remove('jumping');
         isJumping = false;
+
+        // [핵심] 착지 순간, 선입력된 점프 요청이 있다면 즉시 다시 점프
+        if (jumpRequested) {
+            jump();
+        }
       }, 700);
     }
 
@@ -512,6 +517,7 @@
 
     function checkSpikeCollision(spike, index, ghostRect) {
         const spikeRect = spike.getBoundingClientRect();
+        // [최적화] 화면 밖의 장애물은 계산 건너뜀
         if (spikeRect.right < 0 || spikeRect.left > window.innerWidth) return null;
 
         const padding = 5; 
@@ -523,7 +529,7 @@
         );
         if (!isOverlap) return null;
 
-        const charSpans = Array.from(ghostText.querySelectorAll('.char-span'));
+        const charSpans = ghostText.querySelectorAll('.char-span');
         if (charSpans.length === 0) return null;
 
         const headChar = charSpans[charSpans.length - 1];
@@ -571,6 +577,7 @@
             const rect = span.getBoundingClientRect(); 
             const clone = span.cloneNode(true);
             clone.className = 'stuck-char'; 
+            // [최적화] 부모(gameTrack)가 이동 중이므로 상대 좌표 계산
             clone.style.left = (rect.left - attachRect.left) + 'px';
             clone.style.top = (rect.top - attachRect.top) + 'px';
             targetAttachment.appendChild(clone);
@@ -582,7 +589,6 @@
     }
 
     function trySpawnItem(passedSpikeIndex) {
-        // 생성 빈도 90%
         if (Math.random() < 0.9) {
             
             let contentToSpawn = "";
@@ -631,7 +637,6 @@
                 gameTrack.appendChild(itemDiv);
                 
                 cloneItems.push(itemDiv);
-                console.log("🎁 아이템 생성됨:", contentToSpawn);
             }
         }
     }
@@ -647,19 +652,54 @@
         cloneItems = cloneItems.filter(c => c !== item);
     }
 
+    // --- [NEW] 게임 오버 처리 통합 함수 ---
+    // 충돌 즉시 모든 애니메이션과 루프를 정지시킵니다.
+    function handleGameOver(rejectReason) {
+        // 1. 루프 즉시 정지
+        if (gameLoopId) cancelAnimationFrame(gameLoopId);
+        gameLoopId = null;
 
-    // --- 게임 루프 ---
-    function checkGameLoop(resolve, reject) {
+        // 2. CSS 애니메이션 즉시 정지 (점프/낙하)
+        ghostText.style.animationPlayState = 'paused';
+        
+        // 3. 효과음 및 메시지
+        playHitSound();
+        resultSpacer.textContent = "생성실패!";
+        resultSpacer.style.color = "red";
+        resultSpacer.classList.add('show');
+
+        // 4. 지연 후 리셋
+        setTimeout(() => {
+            resetGameUI();
+            rejectReason("Game Over");
+        }, 800);
+    }
+
+
+    // --- [최적화] 게임 루프 (JS 기반 트랙 이동) ---
+    function checkGameLoop(timestamp, resolve, reject) {
+      // 이미 게임 오버 상태라면 루프 실행 방지
+      if (!gameLoopId) return;
+
+      if (!lastTime) lastTime = timestamp;
+      const deltaTime = (timestamp - lastTime) / 1000; // 지난 프레임 시간 (초 단위)
+      lastTime = timestamp;
+
       if (!triggerLine || !finishLine) {
-          gameLoopId = requestAnimationFrame(() => checkGameLoop(resolve, reject));
+          gameLoopId = requestAnimationFrame((t) => checkGameLoop(t, resolve, reject));
           return;
       }
+
+      // JS로 좌표를 직접 이동시켜 브라우저 강제 레이아웃(Reflow) 방지
+      trackPosition -= GAME_SPEED * deltaTime;
+      gameTrack.style.transform = `translateX(${trackPosition}px)`;
 
       const ghostRect = ghostText.getBoundingClientRect();
 
       // 1. 가시 충돌 및 통과 체크
       spikes.forEach((spike, index) => {
-          
+          if (!gameLoopId) return; // 게임 오버 체크
+
           if (!passedObstacles.has(index)) {
               const spikeRect = spike.getBoundingClientRect();
               if (ghostRect.left > spikeRect.right) {
@@ -674,40 +714,23 @@
           if (result) {
               processedSpikes.add(spike);
               if (result.type === 'HEAD_SHOT') {
-                  playHitSound();
-                  cancelAnimationFrame(gameLoopId);
-                  gameTrack.style.animationPlayState = 'paused';
-                  ghostText.style.animationPlayState = 'paused';
-                  
-                  resultSpacer.textContent = "생성실패!";
-                  resultSpacer.style.color = "red";
-                  resultSpacer.classList.add('show');
-
-                  setTimeout(() => {
-                      resetGameUI(); reject("Game Over");
-                  }, 800); 
+                  // [수정] 즉시 멈춤 함수 호출 후 리턴
+                  handleGameOver(reject);
                   return;
               } else if (result.type === 'BODY_HIT') {
                   playHitSound();
                   executeSlice(result.cutIndex, result.spikeIndex);
                   
                   if (ghostText.textContent.length === 0) {
-                      cancelAnimationFrame(gameLoopId);
-                      gameTrack.style.animationPlayState = 'paused';
-                      ghostText.style.animationPlayState = 'paused';
-
-                      resultSpacer.textContent = "생성실패!";
-                      resultSpacer.style.color = "red";
-                      resultSpacer.classList.add('show');
-
-                      setTimeout(() => {
-                          resetGameUI(); reject("Game Over");
-                      }, 800);
+                      // [수정] 즉시 멈춤 함수 호출 후 리턴
+                      handleGameOver(reject);
                       return;
                   }
               }
           }
       });
+
+      if (!gameLoopId) return; // 충돌로 인해 게임이 멈췄으면 아래 로직 실행 안함
 
       // 2. 아이템 획득
       cloneItems.forEach(item => {
@@ -754,11 +777,12 @@
         }
 
         cancelAnimationFrame(gameLoopId);
+        gameLoopId = null; // 루프 ID 초기화
         resolve("Victory");
         return;
       }
 
-      gameLoopId = requestAnimationFrame(() => checkGameLoop(resolve, reject));
+      gameLoopId = requestAnimationFrame((t) => checkGameLoop(t, resolve, reject));
     }
 
 
@@ -806,8 +830,11 @@
         setTimeout(() => {
           ghostText.classList.remove('falling');
           jumpBtn.classList.add('show');
-          gameTrack.classList.add('track-move');
-          checkGameLoop(resolve, reject);
+          
+          // [최적화] JS 루프 시작 전 시간 초기화
+          lastTime = performance.now();
+          // 루프 ID 할당
+          gameLoopId = requestAnimationFrame((t) => checkGameLoop(t, resolve, reject));
         }, 1000);
       });
     }
@@ -816,19 +843,25 @@
       textInput.classList.remove('hidden-text');
       ghostText.classList.remove('falling');
       ghostText.classList.remove('jumping');
-      gameTrack.style.animationPlayState = '';
-      ghostText.style.animationPlayState = '';
+      
+      // [중요] 일시정지 풀기 (다음 게임을 위해)
+      ghostText.style.animationPlayState = 'running';
       ghostText.style.opacity = '0';
       
-      gameTrack.classList.remove('track-move');
       jumpBtn.classList.remove('show');
       
       gameTrack.innerHTML = '';
+      gameTrack.style.transform = 'translateX(0px)'; // [최적화] 위치 리셋
+      
       spikes = [];
       attachments = [];
       
       cloneItems.forEach(c => c.remove());
       cloneItems = [];
+      
+      // 점프 관련 상태 초기화
+      isJumping = false;
+      jumpRequested = false;
 
       synthBtn.disabled = false;
       synthBtn.textContent = '생성 시작'; 
