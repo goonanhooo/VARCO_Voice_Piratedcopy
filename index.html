@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>해적판 VARCO Voice</title>
+  <style>
+    /* 폰트 통일 */
+    body { 
+      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      max-width: 600px; 
+      margin: 20px auto; 
+      line-height: 1.5; 
+      color: #333;
+    }
+    
+    /* 1. 게임 무대 */
+    .input-wrapper {
+      position: relative;
+      width: 100%;
+      height: 180px;
+      border: 2px solid #767676;
+      border-radius: 4px;
+      background: #fff;
+      overflow: hidden; 
+      box-sizing: border-box;
+      margin-bottom: 0; 
+    }
+
+    /* 2. 실제 입력창 */
+    textarea { 
+      width: 100%; height: 100%; 
+      border: none; resize: none; 
+      padding: 15px; box-sizing: border-box;
+      background: transparent;
+      outline: none; z-index: 10; position: absolute; top: 0; left: 0;
+      font-family: inherit; font-size: 16px; line-height: 1.5; letter-spacing: 0px;
+    }
+    textarea.hidden-text { color: transparent; caret-color: transparent; }
+
+    /* 3. 주인공 */
+    #ghostText {
+      position: absolute; left: 15px; top: 15px; 
+      width: fit-content; white-space: pre; 
+      font-family: inherit; font-size: 16px; line-height: 1.5; letter-spacing: 0px;
+      color: #000; pointer-events: none; z-index: 5;
+      opacity: 0; transform-origin: center bottom;
+      will-change: transform, left;
+    }
+    .char-span { display: inline-block; }
+
+    /* 4. 죽은 글자 */
+    .stuck-char {
+      position: absolute; color: #000; 
+      font-size: 16px; line-height: 1.5; font-family: inherit; white-space: pre;
+      pointer-events: none; z-index: 6; margin: 0; padding: 0;
+      transform: rotate(10deg); 
+      opacity: 0.5; 
+    }
+
+    /* 5. 부활 아이템 */
+    .clone-item {
+      position: absolute; 
+      top: 60px; /* 점프 높이 */
+      color: #000; 
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      padding: 0;
+      font-size: 16px;
+      font-family: inherit;
+      z-index: 7;
+      white-space: nowrap; 
+      width: max-content; 
+    }
+
+    /* 6. 게임 트랙 */
+    #gameTrack {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 3;
+      will-change: transform; 
+    }
+
+    /* 7. 가시 */
+    .spike {
+      position: absolute; bottom: 0;
+      width: 24px; height: 40px;
+      background-repeat: no-repeat;
+      background-size: contain;
+      background-position: center bottom;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 50'%3E%3Cpath fill='%234A4A4A' d='M10 0h10v50H10z M0 15h5v20H0z M5 30h5v5H5z M25 15h5v20h-5z M20 30h5v5h-5z'/%3E%3C/svg%3E");
+    }
+    
+    .spike-attachment {
+        position: absolute; bottom: 0; width: 0; height: 0; 
+        z-index: 6; overflow: visible;
+    }
+
+    /* 8. 생성선 & 결승선 */
+    #triggerLine { 
+        position: absolute; top: 0; bottom: 0; width: 2px; background: transparent; z-index: 10;
+    }
+    #finishLine { 
+        position: absolute; top: 0; bottom: 0; width: 10px; border-left: 5px dashed #2ecc71; z-index: 10;
+    }
+    #finishLine::after {
+      content: "GOAL"; position: absolute; top: 10px; left: 8px;
+      color: #2ecc71; font-weight: bold; font-size: 0.9rem;
+    }
+
+    /* 9. 애니메이션 */
+    .falling { animation: gravityBounce 1.0s linear forwards; opacity: 1 !important; }
+    @keyframes gravityBounce {
+      0% { transform: translateY(-150px); animation-timing-function: ease-in; opacity: 0; }
+      40% { transform: translateY(0); animation-timing-function: ease-out; opacity: 1; }
+      65% { transform: translateY(-25px); animation-timing-function: ease-in; }
+      85% { transform: translateY(0); animation-timing-function: ease-out; }
+      100% { transform: translateY(0); }
+    }
+
+    .jumping { animation: jumpAction 0.7s cubic-bezier(0.4, 0, 0.2, 1); }
+    @keyframes jumpAction {
+      0% { transform: translateY(0); }
+      40% { transform: translateY(-90px); } 
+      100% { transform: translateY(0); } 
+    }
+
+    @keyframes moveTrackDynamic {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(var(--move-distance)); } 
+    }
+    .track-move { animation: moveTrackDynamic var(--move-duration) linear forwards; }
+
+    /* 10. 레이아웃 & 버튼 */
+    label { font-weight: normal; display: block; margin-top: 12px; }
+    .row { margin-bottom: 0px; } 
+    .status { display: none; } 
+    
+    /* 결과 표시 영역 (빈 공간) */
+    .result-spacer {
+        height: 40px; 
+        margin-top: 15px;
+        margin-bottom: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: #000; 
+        font-size: 1.1rem;
+        
+        opacity: 0;
+        transform: translateY(10px);
+        transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+    }
+    .result-spacer.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .bottom-controls { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #eee; padding-top: 10px; margin-top: 0px; }
+    .left-buttons button { margin-right: 5px; padding: 8px 12px; cursor: pointer; border-radius: 4px; border: none; }
+    #synthesizeBtn { background-color: #444; color: white; } 
+    #playBtn { background-color: #007bff; color: white; }
+    #downloadBtn { background-color: #6c757d; color: white; }
+    button:disabled { background-color: #ccc !important; cursor: not-allowed; }
+    #jumpBtn { padding: 8px 15px; cursor: pointer; background-color: #2ecc71; color: white; border: none; border-radius: 4px; font-weight: bold; opacity: 0; transition: opacity 0.3s ease-in; pointer-events: none; }
+    #jumpBtn.show { opacity: 1; pointer-events: auto; }
+
+    /* 히스토리 목록 스타일 (심플) */
+    #historyContainer {
+        display: none; /* 초기엔 숨김 */
+        margin-top: 20px;
+        border-top: 1px solid #eee;
+        padding-top: 10px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+    th {
+        text-align: left;
+        border-bottom: 2px solid #ddd;
+        padding: 8px;
+        color: #555;
+    }
+    td {
+        border-bottom: 1px solid #eee;
+        padding: 8px;
+        vertical-align: middle; 
+    }
+    .col-no { width: 40px; color: #888; }
+    .col-init { width: 40%; color: #666; }
+    /* [수정] font-weight: bold 제거 -> normal */
+    .col-final { font-weight: normal; color: #000; }
+
+    /* 동그란 아이콘 버튼 스타일 (크기 18px로 축소) */
+    .icon-btn {
+        width: 18px; height: 18px; 
+        border-radius: 50%;
+        border: none;
+        color: white;
+        font-size: 10px; 
+        cursor: pointer;
+        margin-left: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        vertical-align: middle;
+        padding: 0;
+        line-height: 1;
+    }
+    .btn-play { background-color: #007bff; }
+    .btn-play:hover { background-color: #0056b3; }
+    .btn-down { background-color: #6c757d; }
+    .btn-down:hover { background-color: #545b62; }
+
+  </style>
+</head>
+<body>
+  <h2>해적판 VARCO Voice</h2>
+
+  <div class="row">
+    <label for="textInput">
+      여러분이 작성한 텍스트를 음성으로 변환합니다.
+      <br>⚠ 너무 많은 텍스트를 입력할 시 생성이 어렵습니다! ⚠
+    </label>
+    <br>
+    <div class="input-wrapper" id="inputWrapper">
+      <textarea id="textInput" spellcheck="false" placeholder="여기에 문장을 입력하세요"></textarea>
+      <div id="ghostText"></div>
+      <div id="gameTrack"></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div id="voiceStatus" class="status">랜덤 화자 선택 중...</div>
+  </div>
+
+  <div id="resultSpacer" class="result-spacer"></div>
+
+  <div class="row bottom-controls">
+    <div class="left-buttons">
+      <button id="synthesizeBtn">생성 시작</button>
+      <button id="playBtn" disabled>▶ 재생</button>
+      <button id="downloadBtn" disabled>다운로드</button>
+    </div>
+    <button id="jumpBtn">JUMP! (Space)</button>
+  </div>
+
+  <div id="historyContainer">
+    <table>
+        <thead>
+            <tr>
+                <th class="col-no">No.</th>
+                <th>초기 텍스트</th>
+                <th>최종 텍스트</th>
+            </tr>
+        </thead>
+        <tbody id="historyBody">
+            </tbody>
+    </table>
+  </div>
+
+  <script>
+    const WORKER_URL = "https://nc-tts-worker.zoopyo.workers.dev/tts";
+
+    const textInput = document.getElementById('textInput');
+    const ghostText = document.getElementById('ghostText');
+    const inputWrapper = document.getElementById('inputWrapper');
+    const gameTrack = document.getElementById('gameTrack');
+    const resultSpacer = document.getElementById('resultSpacer'); 
+    
+    // 히스토리 관련 요소
+    const historyContainer = document.getElementById('historyContainer');
+    const historyBody = document.getElementById('historyBody');
+    let historyCount = 0;
+    let initialTextValue = ""; 
+
+    let spikes = [];
+    let attachments = [];
+    let cloneItems = []; 
+
+    let triggerLine = null;
+    let finishLine = null;
+
+    const synthBtn = document.getElementById('synthesizeBtn');
+    const jumpBtn = document.getElementById('jumpBtn');
+    const playBtn = document.getElementById('playBtn'); 
+    const downloadBtn = document.getElementById('downloadBtn');
+    const voiceStatus = document.getElementById('voiceStatus');
+
+    let selectedVoice = "3b2daafa-1f83-580a-a846-d5fc7fd6f3e7"; 
+    let lastAudioUrl = null;
+    let isJumping = false;
+    let gameLoopId = null; 
+    let audioGenerationPromise = null;
+    let isAudioTriggered = false;
+    
+    let processedSpikes = new Set();
+    let passedObstacles = new Set(); 
+    let lostStringPool = ""; 
+
+    let currentTextLeft = 15; 
+    const VOICES = ["3b2daafa-1f83-580a-a846-d5fc7fd6f3e7"];
+
+    // --- 🔊 사운드 시스템 ---
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+
+    function playJumpSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.type = 'square'; 
+        oscillator.frequency.setValueAtTime(350, audioCtx.currentTime);
+        oscillator.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.1); 
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.1);
+    }
+
+    function playHitSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.15); 
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.15);
+    }
+
+    function playRecoverSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(600, audioCtx.currentTime); 
+        oscillator.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.15);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.15);
+    }
+
+    // --- 히스토리 추가 함수 ---
+    function addHistoryLog(finalText, audioUrl) {
+        historyCount++;
+        historyContainer.style.display = 'block'; 
+
+        const tr = document.createElement('tr');
+        
+        // 1. 번호
+        const tdNo = document.createElement('td');
+        tdNo.className = 'col-no';
+        tdNo.textContent = historyCount;
+
+        // 2. 초기 텍스트
+        const tdInit = document.createElement('td');
+        tdInit.className = 'col-init';
+        tdInit.textContent = initialTextValue;
+
+        // 3. 최종 텍스트 + 버튼들
+        const tdFinal = document.createElement('td');
+        tdFinal.className = 'col-final';
+
+        if (audioUrl) {
+            const spanText = document.createElement('span');
+            spanText.textContent = finalText;
+            tdFinal.appendChild(spanText);
+
+            // 재생 버튼
+            const playBtn = document.createElement('button');
+            playBtn.className = 'icon-btn btn-play';
+            playBtn.textContent = '▶';
+            playBtn.title = "듣기";
+            playBtn.onclick = () => {
+                new Audio(audioUrl).play();
+            };
+            tdFinal.appendChild(playBtn);
+
+            // 다운로드 버튼
+            const downBtn = document.createElement('button');
+            downBtn.className = 'icon-btn btn-down';
+            downBtn.textContent = '⬇';
+            downBtn.title = "다운로드";
+            downBtn.onclick = () => {
+                const a = document.createElement('a');
+                a.href = audioUrl;
+                a.download = `tts_result_${historyCount}.wav`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            };
+            tdFinal.appendChild(downBtn);
+
+        } else {
+            const spanFail = document.createElement('span');
+            spanFail.style.color = 'red';
+            spanFail.style.fontWeight = 'bold';
+            spanFail.textContent = '생성 실패!';
+            tdFinal.appendChild(spanFail);
+        }
+
+        tr.appendChild(tdNo);
+        tr.appendChild(tdInit);
+        tr.appendChild(tdFinal);
+        
+        historyBody.prepend(tr);
+    }
+
+    // --- 🏁 레벨 생성 ---
+    function initLevel() {
+        gameTrack.innerHTML = ''; 
+        spikes = [];
+        attachments = [];
+        cloneItems = []; 
+        passedObstacles.clear(); 
+        lostStringPool = "";     
+
+        // 장애물 개수와 간격 고정
+        const obstacleCount = 8;    
+        
+        let currentX = 600; 
+        
+        const minGap = 400;
+        const maxGap = 800;
+
+        for (let i = 0; i < obstacleCount; i++) {
+            const gap = Math.floor(Math.random() * (maxGap - minGap + 1)) + minGap;
+            currentX += gap;
+
+            const spikeDiv = document.createElement('div');
+            spikeDiv.className = `spike`; 
+            spikeDiv.style.left = `${currentX}px`;
+            gameTrack.appendChild(spikeDiv);
+
+            const attachDiv = document.createElement('div');
+            attachDiv.className = 'spike-attachment';
+            attachDiv.style.left = `${currentX}px`;
+            gameTrack.appendChild(attachDiv);
+        }
+
+        const triggerPos = currentX + 200;
+        const tLine = document.createElement('div');
+        tLine.id = 'triggerLine';
+        tLine.style.left = `${triggerPos}px`;
+        gameTrack.appendChild(tLine);
+
+        const finishPos = triggerPos + 500;
+        const fLine = document.createElement('div');
+        fLine.id = 'finishLine';
+        fLine.style.left = `${finishPos}px`;
+        gameTrack.appendChild(fLine);
+
+        spikes = document.querySelectorAll('.spike');
+        attachments = document.querySelectorAll('.spike-attachment');
+        triggerLine = document.getElementById('triggerLine');
+        finishLine = document.getElementById('finishLine');
+
+        const totalDistance = -(finishPos + 500); 
+        const speed = 350; 
+        const duration = Math.abs(totalDistance) / speed;
+
+        gameTrack.style.setProperty('--move-distance', `${totalDistance}px`);
+        gameTrack.style.setProperty('--move-duration', `${duration}s`);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      selectedVoice = VOICES[Math.floor(Math.random() * VOICES.length)];
+      voiceStatus.textContent = `랜덤 선택된 화자: ${selectedVoice}`;
+    });
+
+    function jump() {
+      if (isJumping) return;
+      playJumpSound();
+      isJumping = true;
+      ghostText.classList.add('jumping');
+      setTimeout(() => {
+        ghostText.classList.remove('jumping');
+        isJumping = false;
+      }, 700);
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && jumpBtn.classList.contains('show')) {
+        e.preventDefault(); jump();
+      }
+    });
+    jumpBtn.addEventListener('click', (e) => {
+        jump(); e.target.blur(); 
+    });
+
+    function startAudioGeneration(text) {
+        if (!text || text.length === 0) return Promise.resolve({ audio: null });
+        console.log("🚀 오디오 생성 시작:", text);
+        return fetch(WORKER_URL, {
+          method: 'POST',
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, voice: selectedVoice })
+        }).then(res => res.json());
+    }
+
+    function checkSpikeCollision(spike, index, ghostRect) {
+        const spikeRect = spike.getBoundingClientRect();
+        if (spikeRect.right < 0 || spikeRect.left > window.innerWidth) return null;
+
+        const padding = 5; 
+        const isOverlap = !(
+            ghostRect.right - padding < spikeRect.left + padding || 
+            ghostRect.left + padding > spikeRect.right - padding || 
+            ghostRect.bottom - padding < spikeRect.top + padding || 
+            ghostRect.top + padding > spikeRect.bottom
+        );
+        if (!isOverlap) return null;
+
+        const charSpans = Array.from(ghostText.querySelectorAll('.char-span'));
+        if (charSpans.length === 0) return null;
+
+        const headChar = charSpans[charSpans.length - 1];
+        const headRect = headChar.getBoundingClientRect();
+        const headHit = !(
+            headRect.right - padding < spikeRect.left + padding || 
+            headRect.left + padding > spikeRect.right - padding || 
+            headRect.bottom - padding < spikeRect.top + padding || 
+            headRect.top + padding > spikeRect.bottom
+        );
+        if (headHit) return { type: 'HEAD_SHOT' };
+
+        for (let i = charSpans.length - 2; i >= 0; i--) {
+            const char = charSpans[i];
+            const rect = char.getBoundingClientRect();
+            const hit = !(
+                rect.right - padding < spikeRect.left + padding || 
+                rect.left + padding > spikeRect.right - padding || 
+                rect.bottom - padding < spikeRect.top + padding || 
+                rect.top + padding > spikeRect.bottom
+            );
+            if (hit) return { type: 'BODY_HIT', cutIndex: i, spikeIndex: index };
+        }
+        return null; 
+    }
+
+    function executeSlice(cutIndex, spikeIndex) {
+        const charSpans = Array.from(ghostText.querySelectorAll('.char-span'));
+        const charsToCut = charSpans.slice(0, cutIndex + 1);
+        if (charsToCut.length === 0) return;
+
+        let lostTextContent = "";
+        charsToCut.forEach(span => lostTextContent += span.textContent);
+        
+        lostStringPool += lostTextContent;
+
+        const firstRect = charsToCut[0].getBoundingClientRect();
+        const lastCutRect = charsToCut[charsToCut.length - 1].getBoundingClientRect();
+        const removedWidth = lastCutRect.right - firstRect.left;
+
+        const targetAttachment = attachments[spikeIndex];
+        const attachRect = targetAttachment.getBoundingClientRect(); 
+
+        charsToCut.forEach(span => {
+            const rect = span.getBoundingClientRect(); 
+            const clone = span.cloneNode(true);
+            clone.className = 'stuck-char'; 
+            clone.style.left = (rect.left - attachRect.left) + 'px';
+            clone.style.top = (rect.top - attachRect.top) + 'px';
+            targetAttachment.appendChild(clone);
+        });
+
+        charsToCut.forEach(span => span.remove());
+        currentTextLeft += removedWidth;
+        ghostText.style.left = currentTextLeft + 'px';
+    }
+
+    function trySpawnItem(passedSpikeIndex) {
+        // 생성 빈도 90%
+        if (Math.random() < 0.9) {
+            
+            let contentToSpawn = "";
+
+            if (lostStringPool.length > 0) {
+                let poolArray = lostStringPool.split('');
+                const count = Math.min(poolArray.length, Math.floor(Math.random() * 7) + 1);
+                
+                let result = "";
+                for(let i=0; i<count; i++) {
+                    const rIndex = Math.floor(Math.random() * poolArray.length);
+                    result += poolArray[rIndex];
+                    poolArray.splice(rIndex, 1); 
+                }
+                
+                lostStringPool = poolArray.join('');
+                contentToSpawn = result;
+
+            } else {
+                const currentText = ghostText.textContent;
+                if (currentText.length > 0) {
+                    const rIndex = Math.floor(Math.random() * currentText.length);
+                    contentToSpawn = currentText[rIndex];
+                }
+            }
+
+            if (contentToSpawn) {
+                const currentSpike = spikes[passedSpikeIndex];
+                const spikeLeft = parseInt(currentSpike.style.left);
+                
+                const minOffset = 650;
+                const maxOffset = 850;
+                const spawnOffset = Math.floor(Math.random() * (maxOffset - minOffset + 1)) + minOffset;
+                const spawnX = spikeLeft + spawnOffset;
+
+                const triggerLeft = parseInt(triggerLine.style.left);
+                if (spawnX >= triggerLeft) {
+                    console.log("🚫 아이템 생성 취소: 생성선 이후 영역입니다.");
+                    return;
+                }
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'clone-item';
+                itemDiv.textContent = contentToSpawn;
+                itemDiv.style.left = `${spawnX}px`;
+                gameTrack.appendChild(itemDiv);
+                
+                cloneItems.push(itemDiv);
+                console.log("🎁 아이템 생성됨:", contentToSpawn);
+            }
+        }
+    }
+
+    function collectCloneItem(item) {
+        playRecoverSound();
+
+        const text = item.textContent;
+        const newSpans = text.split('').map(char => `<span class="char-span">${char}</span>`).join('');
+        ghostText.insertAdjacentHTML('beforeend', newSpans);
+
+        item.remove();
+        cloneItems = cloneItems.filter(c => c !== item);
+    }
+
+
+    // --- 게임 루프 ---
+    function checkGameLoop(resolve, reject) {
+      if (!triggerLine || !finishLine) {
+          gameLoopId = requestAnimationFrame(() => checkGameLoop(resolve, reject));
+          return;
+      }
+
+      const ghostRect = ghostText.getBoundingClientRect();
+
+      // 1. 가시 충돌 및 통과 체크
+      spikes.forEach((spike, index) => {
+          
+          if (!passedObstacles.has(index)) {
+              const spikeRect = spike.getBoundingClientRect();
+              if (ghostRect.left > spikeRect.right) {
+                  passedObstacles.add(index); 
+                  trySpawnItem(index); 
+              }
+          }
+
+          if (processedSpikes.has(spike)) return;
+          const result = checkSpikeCollision(spike, index, ghostRect);
+
+          if (result) {
+              processedSpikes.add(spike);
+              if (result.type === 'HEAD_SHOT') {
+                  playHitSound();
+                  cancelAnimationFrame(gameLoopId);
+                  gameTrack.style.animationPlayState = 'paused';
+                  ghostText.style.animationPlayState = 'paused';
+                  
+                  resultSpacer.textContent = "생성실패!";
+                  resultSpacer.style.color = "red";
+                  resultSpacer.classList.add('show');
+
+                  setTimeout(() => {
+                      resetGameUI(); reject("Game Over");
+                  }, 800); 
+                  return;
+              } else if (result.type === 'BODY_HIT') {
+                  playHitSound();
+                  executeSlice(result.cutIndex, result.spikeIndex);
+                  
+                  if (ghostText.textContent.length === 0) {
+                      cancelAnimationFrame(gameLoopId);
+                      gameTrack.style.animationPlayState = 'paused';
+                      ghostText.style.animationPlayState = 'paused';
+
+                      resultSpacer.textContent = "생성실패!";
+                      resultSpacer.style.color = "red";
+                      resultSpacer.classList.add('show');
+
+                      setTimeout(() => {
+                          resetGameUI(); reject("Game Over");
+                      }, 800);
+                      return;
+                  }
+              }
+          }
+      });
+
+      // 2. 아이템 획득
+      cloneItems.forEach(item => {
+          const itemRect = item.getBoundingClientRect();
+          if (itemRect.right < 0 || itemRect.left > window.innerWidth) return;
+
+          const isOverlap = !(
+              ghostRect.right < itemRect.left || 
+              ghostRect.left > itemRect.right || 
+              ghostRect.bottom < itemRect.top || 
+              ghostRect.top > itemRect.bottom
+          );
+
+          if (isOverlap) {
+              collectCloneItem(item);
+          }
+      });
+
+
+      // 3. 생성선 체크
+      const triggerRect = triggerLine.getBoundingClientRect();
+      const ghostX = ghostRect.left; 
+      
+      if (!isAudioTriggered && triggerRect.right < ghostX) {
+          isAudioTriggered = true;
+          const survivingText = ghostText.textContent;
+          audioGenerationPromise = startAudioGeneration(survivingText);
+      }
+
+      // 4. 결승선 체크
+      const finishRect = finishLine.getBoundingClientRect();
+      if (finishRect.right < ghostX) {
+        if (!isAudioTriggered) {
+              console.warn("⚠️ 트리거 놓침 -> 강제 생성");
+              const survivingText = ghostText.textContent;
+              audioGenerationPromise = startAudioGeneration(survivingText);
+        }
+        
+        if (resultSpacer.textContent !== "생성실패!") {
+            const survivingText = ghostText.textContent;
+            resultSpacer.textContent = "생성 음성: " + survivingText;
+            resultSpacer.style.color = "black"; 
+            resultSpacer.classList.add('show'); 
+        }
+
+        cancelAnimationFrame(gameLoopId);
+        resolve("Victory");
+        return;
+      }
+
+      gameLoopId = requestAnimationFrame(() => checkGameLoop(resolve, reject));
+    }
+
+
+    // --- 시퀀스 ---
+    function runGameSequence() {
+      const text = textInput.value;
+      if (!text) return Promise.reject("No Text");
+      
+      initialTextValue = text;
+
+      resultSpacer.classList.remove('show');
+      resultSpacer.textContent = '';
+      resultSpacer.style.color = 'black'; 
+
+      return new Promise((resolve, reject) => {
+        playBtn.disabled = true;
+        downloadBtn.disabled = true;
+        synthBtn.blur();
+        
+        initLevel(); 
+
+        audioGenerationPromise = null;
+        isAudioTriggered = false;
+        processedSpikes.clear();
+        
+        attachments.forEach(att => att.innerHTML = '');
+
+        const chars = text.split('').map(char => `<span class="char-span">${char}</span>`).join('');
+        ghostText.innerHTML = chars;
+        
+        currentTextLeft = 15;
+        ghostText.style.left = '15px';
+
+        const containerHeight = inputWrapper.clientHeight; 
+        const textHeight = ghostText.offsetHeight; 
+        const paddingBottom = 15;
+        let targetTop = containerHeight - textHeight - paddingBottom;
+        
+        ghostText.style.top = targetTop + 'px'; 
+        ghostText.style.opacity = '1';
+        textInput.classList.add('hidden-text');
+        
+        ghostText.classList.add('falling');
+
+        setTimeout(() => {
+          ghostText.classList.remove('falling');
+          jumpBtn.classList.add('show');
+          gameTrack.classList.add('track-move');
+          checkGameLoop(resolve, reject);
+        }, 1000);
+      });
+    }
+
+    function resetGameUI() {
+      textInput.classList.remove('hidden-text');
+      ghostText.classList.remove('falling');
+      ghostText.classList.remove('jumping');
+      gameTrack.style.animationPlayState = '';
+      ghostText.style.animationPlayState = '';
+      ghostText.style.opacity = '0';
+      
+      gameTrack.classList.remove('track-move');
+      jumpBtn.classList.remove('show');
+      
+      gameTrack.innerHTML = '';
+      spikes = [];
+      attachments = [];
+      
+      cloneItems.forEach(c => c.remove());
+      cloneItems = [];
+
+      synthBtn.disabled = false;
+      synthBtn.textContent = '생성 시작'; 
+    }
+
+    async function processGameResult() {
+      try {
+        if (!audioGenerationPromise) {
+            const survivingText = ghostText.textContent;
+            audioGenerationPromise = startAudioGeneration(survivingText);
+        }
+        
+        const data = await audioGenerationPromise;
+        if (!data || !data.audio) throw new Error("Audio generation failed");
+
+        if (lastAudioUrl) URL.revokeObjectURL(lastAudioUrl);
+        const audioData = data.audio;
+        const binary = atob(audioData);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes.buffer], { type: 'audio/wav' });
+        lastAudioUrl = URL.createObjectURL(blob);
+
+        const finalText = ghostText.textContent;
+        addHistoryLog(finalText, lastAudioUrl);
+
+        playBtn.disabled = false;
+        downloadBtn.disabled = false;
+        textInput.value = '';
+        playBtn.textContent = "▶ 재생 (완료!)";
+        setTimeout(() => playBtn.textContent = "▶ 재생", 2000);
+
+      } catch (e) {
+        console.error(e);
+      } finally {
+        resetGameUI();
+        if (!playBtn.disabled) textInput.focus();
+      }
+    }
+
+    synthBtn.addEventListener('click', async () => {
+      const text = textInput.value.trim();
+      if (!text) { alert("문장을 입력해주세요."); return; }
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      synthBtn.disabled = true;
+      synthBtn.textContent = '생성 중...';
+      try {
+        await runGameSequence();
+        await processGameResult();
+      } catch (gameResult) {
+        console.log("Game Ended:", gameResult);
+        addHistoryLog(null, null);
+      }
+    });
+
+    playBtn.addEventListener('click', () => {
+        if (lastAudioUrl) {
+            const audio = new Audio(lastAudioUrl);
+            audio.play();
+        }
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      if (!lastAudioUrl) return;
+      const a = document.createElement('a');
+      a.href = lastAudioUrl;
+      a.download = 'tts.wav';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+  </script>
+</body>
+</html>
