@@ -538,7 +538,7 @@
     }
 
 
-    // 데스크탑 키보드
+// 데스크탑 키보드 (유지)
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space' && jumpBtn.classList.contains('show')) {
     e.preventDefault();
@@ -546,7 +546,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// 모바일 / 터치 즉시 반응
+// 모바일 / 터치 — pointer 이벤트 우선 사용
 jumpBtn.addEventListener(
   'pointerdown',
   (e) => {
@@ -556,6 +556,20 @@ jumpBtn.addEventListener(
   },
   { passive: false }
 );
+
+// pointer 이벤트가 없는 환경에서만 touchstart 사용 (중복 방지)
+if (!('PointerEvent' in window)) {
+  jumpBtn.addEventListener(
+    'touchstart',
+    (e) => {
+      e.preventDefault();
+      jump();
+      jumpBtn.blur();
+    },
+    { passive: false }
+  );
+}
+
 
 // pointer 이벤트 미지원 환경 대비
 jumpBtn.addEventListener(
