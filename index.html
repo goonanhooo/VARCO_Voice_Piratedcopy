@@ -249,6 +249,33 @@
         padding: 16px;
       }
 
+          h2 {
+        margin-top: 12px;
+        margin-bottom: 10px;
+        position: relative;
+      }
+
+      /* 정식판 버튼을 화면 상단에 고정(제목 라인 높이) */
+      #officialLinkBtn {
+        position: fixed; /* ← 핵심 */
+        top: calc(env(safe-area-inset-top) + 25px);  /* 제목이랑 같은 높이 느낌 */
+        right: 16px;
+        z-index: 9999;
+
+        max-width: 110px;      /* 가로 줄여서 2줄 */
+        white-space: normal;
+        text-align: center;
+        line-height: 1.2;
+        padding: 6px 8px;
+        font-size: 11px;
+      }
+    }
+
+        /* 아이템(위 글씨 오브젝트) 위치를 아래로 내려서 닿게 */
+      .clone-item {
+        top: 105px; /* 기존 60px → 105px (원하면 90~120 사이로 조절) */
+      }
+    
       .input-wrapper {
         height: 240px; /* 입력창 더 큼 */
       }
