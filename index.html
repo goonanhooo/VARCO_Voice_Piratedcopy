@@ -126,9 +126,37 @@
 
     /* 10. 레이아웃 & 버튼 */
     label { font-weight: normal; display: block; margin-top: 12px; }
-    .row { margin-bottom: 0px; } 
+    
+    /* .row에 position: relative 추가하여 내부 절대 좌표 기준점 마련 */
+    .row { margin-bottom: 0px; position: relative; } 
+    
     .status { display: none; } 
     
+    /* 정식판 링크 버튼 스타일 */
+    #officialLinkBtn {
+        position: absolute;
+        top: 0;
+        right: 0;
+        background-color: #000;
+        color: #fff;
+        padding: 8px 12px;
+        font-size: 12px;
+        text-decoration: none;
+        border-radius: 4px;
+        font-weight: bold;
+        opacity: 0; /* 초기엔 숨김 */
+        pointer-events: none;
+        transition: opacity 0.5s ease;
+        z-index: 20;
+    }
+    #officialLinkBtn.show {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    #officialLinkBtn:hover {
+        background-color: #333;
+    }
+
     /* 결과 표시 영역 (빈 공간) */
     .result-spacer {
         height: 40px; 
@@ -207,12 +235,18 @@
     .btn-down { background-color: #6c757d; }
     .btn-down:hover { background-color: #545b62; }
 
+    #jumpBtn {
+    touch-action: manipulation;
+    }
+
   </style>
 </head>
 <body>
   <h2>해적판 VARCO Voice</h2>
 
   <div class="row">
+    <a id="officialLinkBtn" href="https://voice.varco.ai/" target="_blank">정식판 VARCO Voice 바로가기</a>
+
     <label for="textInput">
       여러분이 작성한 텍스트를 음성으로 변환합니다.
       <br>⚠ 너무 많은 텍스트를 입력할 시 생성이 어렵습니다! ⚠
@@ -266,6 +300,9 @@
     // 히스토리 관련 요소
     const historyContainer = document.getElementById('historyContainer');
     const historyBody = document.getElementById('historyBody');
+    // 정식판 링크 버튼 요소
+    const officialLinkBtn = document.getElementById('officialLinkBtn');
+    
     let historyCount = 0;
     let initialTextValue = ""; 
 
@@ -356,6 +393,9 @@
     function addHistoryLog(finalText, audioUrl) {
         historyCount++;
         historyContainer.style.display = 'block'; 
+        
+        // [추가된 로직] 결과 목록이 나올 때 정식판 버튼도 같이 보이기
+        officialLinkBtn.classList.add('show');
 
         const tr = document.createElement('tr');
         
@@ -448,7 +488,7 @@
         tLine.style.left = `${triggerPos}px`;
         gameTrack.appendChild(tLine);
 
-        // 결승선: 생성선 기준 800px 뒤 (조금 더 멀리)
+        // 결승선: 생성선 기준 1000px 뒤 (조금 더 멀리)
         const finishPos = triggerPos + 1000;
         const fLine = document.createElement('div');
         fLine.id = 'finishLine';
@@ -469,41 +509,65 @@
 
     // --- [수정된 점프 로직] 선입력(Buffering) 적용 ---
     function jump() {
-      // 이미 점프 중이라면? -> 선입력(Buffer)에 저장해두고 리턴
-      if (isJumping) {
-        jumpRequested = true; 
-        return;
-      }
+     // 이미 점프 중이면 선입력만 저장
+    if (isJumping) {
+    jumpRequested = true;
+    return;
+     }
 
-      playJumpSound();
-      isJumping = true;
-      jumpRequested = false; // 점프 시작 시 선입력 초기화
+     playJumpSound();
+     isJumping = true;
+    jumpRequested = false;
 
-      // 클래스 초기화 후 다시 부여 (애니메이션 재시작)
-      ghostText.classList.remove('jumping');
-      void ghostText.offsetWidth; // Reflow 강제
+     // reflow 강제 제거 → 다음 프레임에 애니메이션 시작
+     ghostText.classList.remove('jumping');
+     requestAnimationFrame(() => {
       ghostText.classList.add('jumping');
+      });
 
-      // 점프 체공 시간 (CSS 0.7s와 동일)
-      setTimeout(() => {
-        ghostText.classList.remove('jumping');
-        isJumping = false;
+    // 점프 체공 시간 (CSS 0.7s와 동일)
+    setTimeout(() => {
+    ghostText.classList.remove('jumping');
+    isJumping = false;
 
-        // [핵심] 착지 순간, 선입력된 점프 요청이 있다면 즉시 다시 점프
-        if (jumpRequested) {
-            jump();
-        }
-      }, 700);
+    // 착지 순간 선입력 처리
+    if (jumpRequested) {
+      jump();
+    }
+     }, 700);
     }
 
-    document.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' && jumpBtn.classList.contains('show')) {
-        e.preventDefault(); jump();
-      }
-    });
-    jumpBtn.addEventListener('click', (e) => {
-        jump(); e.target.blur(); 
-    });
+
+    // 데스크탑 키보드
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && jumpBtn.classList.contains('show')) {
+    e.preventDefault();
+    jump();
+  }
+});
+
+// 모바일 / 터치 즉시 반응
+jumpBtn.addEventListener(
+  'pointerdown',
+  (e) => {
+    e.preventDefault();
+    jump();
+    jumpBtn.blur();
+  },
+  { passive: false }
+);
+
+// pointer 이벤트 미지원 환경 대비
+jumpBtn.addEventListener(
+  'touchstart',
+  (e) => {
+    e.preventDefault();
+    jump();
+    jumpBtn.blur();
+  },
+  { passive: false }
+);
+
 
     function startAudioGeneration(text) {
         if (!text || text.length === 0) return Promise.resolve({ audio: null });
