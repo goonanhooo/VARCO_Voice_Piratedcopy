@@ -2,6 +2,8 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
   <title>해적판 VARCO Voice</title>
   <style>
     /* 폰트 통일 */
@@ -239,8 +241,59 @@
     touch-action: manipulation;
     }
 
+       /* 📱 모바일 버튼 크게 + 터치 최적화 */
+    @media (max-width: 700px) {
+      body {
+        max-width: none;
+        margin: 0;
+        padding: 16px;
+      }
+
+      .input-wrapper {
+        height: 240px; /* 입력창 더 큼 */
+      }
+
+      .bottom-controls {
+        flex-direction: column;   /* 버튼 세로 정렬 */
+        gap: 12px;
+      }
+
+      .left-buttons {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .left-buttons button {
+        width: 100%;
+        padding: 16px 0;          /* 👈 버튼 높이 */
+        font-size: 16px;          /* 👈 글자 큼 */
+        border-radius: 8px;
+      }
+
+      #jumpBtn {
+        width: 100%;
+        padding: 18px 0;          /* 👈 점프 버튼 제일 큼 */
+        font-size: 18px;
+        border-radius: 10px;
+      }
+
+          #officialLinkBtn {
+        max-width: 110px;        /* 가로 길이 제한 */
+        white-space: normal;     /* 줄바꿈 허용 */
+        text-align: center;      /* 가운데 정렬 */
+        line-height: 1.2;
+        padding: 6px 8px;        /* 버튼 자체도 조금 작게 */
+        font-size: 11px;
+      }
+        }
+
+
   </style>
+
 </head>
+
 <body>
   <h2>해적판 VARCO Voice</h2>
 
@@ -569,19 +622,6 @@ if (!('PointerEvent' in window)) {
     { passive: false }
   );
 }
-
-
-// pointer 이벤트 미지원 환경 대비
-jumpBtn.addEventListener(
-  'touchstart',
-  (e) => {
-    e.preventDefault();
-    jump();
-    jumpBtn.blur();
-  },
-  { passive: false }
-);
-
 
     function startAudioGeneration(text) {
         if (!text || text.length === 0) return Promise.resolve({ audio: null });
